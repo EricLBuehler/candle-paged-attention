@@ -1,9 +1,9 @@
 mod ffi;
 
-use candle::backend::BackendStorage;
-use candle::cuda_backend::cudarc::driver::DevicePtr;
-use candle::cuda_backend::WrapErr;
-use candle::{CpuStorage, CudaStorage, DType, Layout, Result, Shape, Storage, Tensor};
+use candle_core::backend::BackendStorage;
+use candle_core::cuda_backend::cudarc::driver::DevicePtr;
+use candle_core::cuda_backend::WrapErr;
+use candle_core::{CpuStorage, CudaStorage, DType, Layout, Result, Shape, Storage, Tensor};
 use half::{bf16, f16};
 use std::ffi::c_int;
 
@@ -19,7 +19,7 @@ struct PagedAttention {
 
 impl PagedAttention {
     fn cuda_fwd_t<
-        T: candle::cuda_backend::CudaDType + candle::cuda_backend::cudarc::driver::DeviceRepr,
+        T: candle_core::cuda_backend::CudaDType + candle_core::cuda_backend::cudarc::driver::DeviceRepr,
     >(
         &self,
         q: &CudaStorage,
@@ -30,7 +30,7 @@ impl PagedAttention {
             DType::F16 => 0,
             DType::BF16 => 1,
             DType::F32 => 2,
-            dtype => candle::bail!("dtype {dtype:?} is not supported"),
+            dtype => candle_core::bail!("dtype {dtype:?} is not supported"),
         };
 
         let dev = q.device();
@@ -39,25 +39,25 @@ impl PagedAttention {
         let (kc, kc_l) = self.key_cache.storage_and_layout();
         let kc = match &*kc {
             Storage::Cuda(kc) => kc,
-            _ => candle::bail!("key_cache must be a cuda tensor"),
+            _ => candle_core::bail!("key_cache must be a cuda tensor"),
         };
 
         let (vc, vc_l) = self.value_cache.storage_and_layout();
         let vc = match &*vc {
             Storage::Cuda(vc) => vc,
-            _ => candle::bail!("value_cache must be a cuda tensor"),
+            _ => candle_core::bail!("value_cache must be a cuda tensor"),
         };
 
         let (bt, bt_l) = self.block_tables.storage_and_layout();
         let bt = match &*bt {
             Storage::Cuda(bt) => bt,
-            _ => candle::bail!("block_tables must be a cuda tensor"),
+            _ => candle_core::bail!("block_tables must be a cuda tensor"),
         };
 
         let (cl, cl_l) = self.context_lens.storage_and_layout();
         let cl = match &*cl {
             Storage::Cuda(cl) => cl,
-            _ => candle::bail!("context_lens must be a cuda tensor"),
+            _ => candle_core::bail!("context_lens must be a cuda tensor"),
         };
 
         let q_rank = q_l.stride().len();
@@ -65,21 +65,21 @@ impl PagedAttention {
         let vc_rank = vc_l.stride().len();
 
         if q_rank != 3 {
-            candle::bail!(
+            candle_core::bail!(
                 "paged-attention expects `q` tensor to be of rank 3 \
                 (q: {q_l:?})"
             )
         }
 
         if kc_rank != 5 {
-            candle::bail!(
+            candle_core::bail!(
                 "paged-attention expects `key_cache` tensor to be of rank 5 \
                 (key_cache: {kc_l:?})"
             )
         }
 
         if vc_rank != 4 {
-            candle::bail!(
+            candle_core::bail!(
                 "paged-attention expects `value_cache` tensor to be of rank 4 \
                 (value_cache: {vc_l:?})"
             )
@@ -107,13 +107,13 @@ impl PagedAttention {
             || head_size == 128
             || head_size == 256)
         {
-            candle::bail!("`head_size` must be one of 64, 80, 96, 112, 128 or 256");
+            candle_core::bail!("`head_size` must be one of 64, 80, 96, 112, 128 or 256");
         }
 
         let (num_seqs_bt, max_num_blocks_per_seq) = bt_l.shape().dims2()?;
 
         if num_seqs_bt != num_seqs {
-            candle::bail!(
+            candle_core::bail!(
                 "shape mismatch block_tables {:?}, expected {:?}",
                 bt_l.shape(),
                 (num_seqs, max_num_blocks_per_seq)
@@ -122,7 +122,7 @@ impl PagedAttention {
 
         let (num_blocks, num_kv_heads, head_size_kc, block_size, x) = kc_l.shape().dims5()?;
         if head_size_kc != head_size / x {
-            candle::bail!(
+            candle_core::bail!(
                 "shape mismatch value_cache {:?}, expected {:?}",
                 vc_l.shape(),
                 (num_blocks, num_heads, head_size / x, block_size, x)
@@ -130,7 +130,7 @@ impl PagedAttention {
         }
 
         if (num_blocks, num_kv_heads, head_size, block_size) != vc_l.shape().dims4()? {
-            candle::bail!(
+            candle_core::bail!(
                 "shape mismatch key_cache {:?} and value_cache {:?}",
                 kc_l.shape(),
                 vc_l.shape()
@@ -138,7 +138,7 @@ impl PagedAttention {
         }
 
         if (num_seqs) != cl_l.shape().dims1()? {
-            candle::bail!(
+            candle_core::bail!(
                 "shape mismatch context_lens {:?}, expected {:?}",
                 cl_l.shape(),
                 (num_seqs)
@@ -230,13 +230,13 @@ impl PagedAttention {
     }
 }
 
-impl candle::CustomOp1 for PagedAttention {
+impl candle_core::CustomOp1 for PagedAttention {
     fn name(&self) -> &'static str {
         "paged-attention"
     }
 
     fn cpu_fwd(&self, _: &CpuStorage, _: &Layout) -> Result<(CpuStorage, Shape)> {
-        candle::bail!("no cpu support for paged-attention")
+        candle_core::bail!("no cpu support for paged-attention")
     }
 
     fn cuda_fwd(&self, q: &CudaStorage, q_l: &Layout) -> Result<(CudaStorage, Shape)> {
@@ -244,13 +244,13 @@ impl candle::CustomOp1 for PagedAttention {
             DType::F32 => self.cuda_fwd_t::<f32>(q, q_l),
             DType::F16 => self.cuda_fwd_t::<f16>(q, q_l),
             DType::BF16 => self.cuda_fwd_t::<bf16>(q, q_l),
-            dt => candle::bail!("paged-attention is only supported for f32/f16/bf16 ({dt:?})"),
+            dt => candle_core::bail!("paged-attention is only supported for f32/f16/bf16 ({dt:?})"),
         }
     }
 }
 
 fn update_cache<
-    T: candle::cuda_backend::CudaDType + candle::cuda_backend::cudarc::driver::DeviceRepr,
+    T: candle_core::cuda_backend::CudaDType + candle_core::cuda_backend::cudarc::driver::DeviceRepr,
 >(
     key: &Tensor,
     value: &Tensor,
@@ -264,37 +264,37 @@ fn update_cache<
         DType::F16 => 0,
         DType::BF16 => 1,
         DType::F32 => 2,
-        dtype => candle::bail!("dtype {dtype:?} is not supported"),
+        dtype => candle_core::bail!("dtype {dtype:?} is not supported"),
     };
 
     let (k, k_l) = key.storage_and_layout();
     let k = match &*k {
         Storage::Cuda(k) => k,
-        _ => candle::bail!("key must be a cuda tensor"),
+        _ => candle_core::bail!("key must be a cuda tensor"),
     };
 
     let (v, v_l) = value.storage_and_layout();
     let v = match &*v {
         Storage::Cuda(v) => v,
-        _ => candle::bail!("value must be a cuda tensor"),
+        _ => candle_core::bail!("value must be a cuda tensor"),
     };
 
     let (kc, kc_l) = key_cache.storage_and_layout();
     let kc = match &*kc {
         Storage::Cuda(kc) => kc,
-        _ => candle::bail!("key_cache must be a cuda tensor"),
+        _ => candle_core::bail!("key_cache must be a cuda tensor"),
     };
 
     let (vc, vc_l) = value_cache.storage_and_layout();
     let vc = match &*vc {
         Storage::Cuda(vc) => vc,
-        _ => candle::bail!("value_cache must be a cuda tensor"),
+        _ => candle_core::bail!("value_cache must be a cuda tensor"),
     };
 
     let (s, s_l) = slot_mapping.storage_and_layout();
     let s = match &*s {
         Storage::Cuda(s) => s,
-        _ => candle::bail!("slot_mapping must be a cuda tensor"),
+        _ => candle_core::bail!("slot_mapping must be a cuda tensor"),
     };
 
     let k_rank = k_l.stride().len();
@@ -303,18 +303,18 @@ fn update_cache<
     let vc_rank = vc_l.stride().len();
 
     if k_rank != 3 || v_rank != 3 {
-        candle::bail!("paged-attention expects input tensors of rank 3 (k: {k_l:?}, v: {v_l:?})")
+        candle_core::bail!("paged-attention expects input tensors of rank 3 (k: {k_l:?}, v: {v_l:?})")
     }
 
     if kc_rank != 5 {
-        candle::bail!(
+        candle_core::bail!(
             "paged-attention expects `key_cache` tensor to be of rank 5 \
                 (key_cache: {kc_l:?})"
         )
     }
 
     if vc_rank != 4 {
-        candle::bail!(
+        candle_core::bail!(
             "paged-attention expects `value_cache` tensor to be of rank 4 \
                 (value_cache: {vc_l:?})"
         )
@@ -336,12 +336,12 @@ fn update_cache<
 
     let (num_tokens, num_heads, head_size) = k_l.shape().dims3()?;
     if (num_tokens, num_heads, head_size) != v_l.shape().dims3()? {
-        candle::bail!("shape mismatch k {:?} and v {:?}", k_l.shape(), v_l.shape())
+        candle_core::bail!("shape mismatch k {:?} and v {:?}", k_l.shape(), v_l.shape())
     }
 
     let (num_blocks, num_heads_kc, head_size_kc, block_size, x) = kc_l.shape().dims5()?;
     if num_heads_kc != num_heads || head_size_kc != head_size / x {
-        candle::bail!(
+        candle_core::bail!(
             "shape mismatch value_cache {:?}, expected {:?}",
             vc_l.shape(),
             (num_blocks, num_heads, head_size / x, block_size, x)
@@ -349,7 +349,7 @@ fn update_cache<
     }
 
     if (num_blocks, num_heads, head_size, block_size) != vc_l.shape().dims4()? {
-        candle::bail!(
+        candle_core::bail!(
             "shape mismatch key_cache {:?} and value_cache {:?}",
             kc_l.shape(),
             vc_l.shape()
@@ -357,7 +357,7 @@ fn update_cache<
     }
 
     if (num_tokens) != s_l.shape().dims1()? {
-        candle::bail!(
+        candle_core::bail!(
             "shape mismatch slot_mapping {:?}, expected {:?}",
             s_l.shape(),
             (num_tokens)
@@ -453,7 +453,7 @@ pub fn reshape_and_cache(
         DType::BF16 => update_cache::<bf16>(key, value, key_cache, value_cache, slot_mapping),
         DType::F32 => update_cache::<f32>(key, value, key_cache, value_cache, slot_mapping),
         dt => {
-            candle::bail!("reshape_and_cache is only supported for f32, f16 and bf16 ({dt:?})")
+            candle_core::bail!("reshape_and_cache is only supported for f32, f16 and bf16 ({dt:?})")
         }
     }
 }
